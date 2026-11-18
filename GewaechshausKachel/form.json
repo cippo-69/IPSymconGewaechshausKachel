@@ -1,0 +1,42 @@
+{
+    "elements": [
+        { "type": "Label", "caption": "Bereiche: je Gewächshaus bzw. Beet ein Eintrag. Startzeiten als „HH:MM=Minuten“, mehrere mit Komma (z. B. 05:50=5, 06:00=15). Wochentage als Mo,Di,Mi,Do,Fr,Sa,So." },
+        { "type": "List", "name": "Zones", "caption": "Bereiche", "add": true, "delete": true, "rowCount": 6, "changeOrder": true,
+          "columns": [
+            { "caption": "Name", "name": "Name", "width": "170px", "add": "", "edit": { "type": "ValidationTextBox" } },
+            { "caption": "Ventil (GARDENA Valve)", "name": "Valve", "width": "190px", "add": 0, "edit": { "type": "SelectInstance", "validModules": ["{68FFB073-8C93-C74C-B3CB-02778AEDE152}"] } },
+            { "caption": "Bodensensor (GARDENA Sensor)", "name": "Soil", "width": "190px", "add": 0, "edit": { "type": "SelectInstance", "validModules": ["{22726FE1-1B92-292B-F544-C293D23DF937}"] } },
+            { "caption": "Raumklima (Z2M-Gerät)", "name": "Climate", "width": "190px", "add": 0, "edit": { "type": "SelectInstance" } },
+            { "caption": "Im Freien (Regen zählt)", "name": "Outdoor", "width": "110px", "add": false, "edit": { "type": "CheckBox" } },
+            { "caption": "Automatik", "name": "Auto", "width": "90px", "add": false, "edit": { "type": "CheckBox" } },
+            { "caption": "Startzeiten", "name": "Times", "width": "170px", "add": "06:00=10", "edit": { "type": "ValidationTextBox" } },
+            { "caption": "Wochentage", "name": "Days", "width": "170px", "add": "Mo,Di,Mi,Do,Fr,Sa,So", "edit": { "type": "ValidationTextBox" } },
+            { "caption": "Nicht gießen ab Bodenfeuchte % (0 = aus)", "name": "MoistStop", "width": "120px", "add": 0, "edit": { "type": "NumberSpinner", "minimum": 0, "maximum": 95, "suffix": " %" } },
+            { "caption": "Nicht gießen ab Regen mm/24 h (0 = aus)", "name": "RainStop", "width": "120px", "add": 0, "edit": { "type": "NumberSpinner", "minimum": 0, "maximum": 30, "digits": 1, "suffix": " mm" } },
+            { "caption": "Hinweis", "name": "Note", "width": "auto", "add": "", "edit": { "type": "ValidationTextBox" } }
+          ] },
+        { "type": "ExpansionPanel", "caption": "Regen und Frost", "items": [
+            { "type": "SelectVariable", "name": "ForecastVar", "caption": "Regenprognose (JSON von „Wettervorhersage_DWD“, MOSMIX)", "width": "600px" },
+            { "type": "SelectVariable", "name": "RainVar", "caption": "Regensensor (Ein = Regen, archiviert)", "width": "600px" },
+            { "type": "NumberSpinner", "name": "RainMinutes", "caption": "„Hat geregnet“ ab Minuten Regen in 24 h", "minimum": 0, "maximum": 600 },
+            { "type": "SelectVariable", "name": "OutdoorTempVar", "caption": "Außentemperatur", "width": "600px" },
+            { "type": "NumberSpinner", "name": "FrostTemp", "caption": "Nicht gießen unter", "digits": 1, "suffix": " °C" }
+        ] },
+        { "type": "ExpansionPanel", "caption": "Zisterne", "items": [
+            { "type": "SelectVariable", "name": "PumpVar", "caption": "Pumpe Zisterne (Schalten)", "width": "600px" },
+            { "type": "SelectVariable", "name": "PumpStatusVar", "caption": "Pumpe Zisterne (Status)", "width": "600px" },
+            { "type": "CheckBox", "name": "PumpRequired", "caption": "Wasser kommt aus der Zisterne: Automatik nur, wenn die Pumpe läuft" },
+            { "type": "CheckBox", "name": "PumpForValves", "caption": "Pumpe vor jeder Bewässerung einschalten und danach wieder aus" },
+            { "type": "NumberSpinner", "name": "PumpLead", "caption": "Vorlauf der Pumpe", "minimum": 0, "maximum": 300, "suffix": " s" }
+        ] },
+        { "type": "SelectObject", "name": "DetailID", "caption": "Seite für die kleine Kachel (öffnet per Tippen, optional)", "width": "600px" },
+        { "type": "Label", "caption": "Farben: zentral im Modul „Visu Design“ (Farbkonzept W5x)." }
+    ],
+    "actions": [
+        { "type": "Button", "caption": "Jetzt prüfen (würde gegossen?)", "onClick": "echo GWK_Check($id);" }
+    ],
+    "status": [
+        { "code": 102, "icon": "active", "caption": "Aktiv" },
+        { "code": 201, "icon": "error", "caption": "Keine Bereiche eingetragen" }
+    ]
+}

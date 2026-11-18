@@ -1,0 +1,14 @@
+{
+    "id": "{BA1F1481-8093-427B-A4EF-F699846EACE5}",
+    "name": "GewaechshausKachel",
+    "type": 3,
+    "vendor": "",
+    "aliases": [
+        "Gewächshaus Kachel"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "GWK",
+    "url": "https://github.com/cippo-69/IPSymconGewaechshausKachel"
+}

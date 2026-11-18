@@ -1,0 +1,282 @@
+<style>
+/* Layout, Farben und Bedienelemente kommen aus „Visu Design“ (W5D_GetCSS + W5D_GetTileCSS, Wurzel .w5t.fill).
+   Hier nur Sonderelemente, ausschließlich mit --w5t-* / --w5-*. */
+html, body { height: 100%; overflow: hidden; }
+#gw .zones { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+@media (max-width: 420px) { #gw .zones { grid-template-columns: 1fr; } }
+#gw .zt { display: flex; align-items: center; gap: 8px; }
+#gw .zt b { flex: 1 1 auto; min-width: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#gw .zt .badge { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#gw .badge.water { background: var(--w5t-cold); }
+#gw .badge.off { background: var(--w5t-bg2); color: var(--w5t-muted); }
+/* Regen */
+#gw .big { font-size: 28px; font-weight: 500; line-height: 1; }
+#gw .wx { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+#gw .wx > div { display: flex; flex-direction: column; gap: 3px; }
+#gw .rain { display: flex; align-items: flex-end; gap: 2px; height: 46px; border-bottom: 1px solid var(--w5t-line); }
+#gw .rain i { flex: 1; min-width: 2px; background: var(--w5t-cold); border-radius: 2px 2px 0 0; }
+#gw .rain i.z { background: var(--w5t-line); }
+#gw .ticks { display: flex; justify-content: space-between; margin-top: -6px; }
+#gw .days { display: grid; grid-template-columns: repeat(auto-fit, minmax(54px, 1fr)); gap: 6px; }
+#gw .day { background: var(--w5t-bg2); border-radius: 10px; padding: 6px 4px; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+#gw .day b { font-size: 12px; font-weight: 600; }
+/* Messwerte */
+#gw .mets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#gw .met { background: var(--w5t-bg2); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#gw .met .v { font-size: 20px; font-weight: 500; line-height: 1.15; }
+#gw .met .v small { font-size: 13px; font-weight: 400; }
+#gw .met.dim .v { opacity: .45; }
+#gw .mb { position: relative; height: 6px; border-radius: 3px; background: var(--w5t-line); margin-top: 4px; }
+#gw .mb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--w5t-cold); }
+#gw .mb u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--w5t-fg); }
+#gw .ok { color: var(--w5t-accent); font-weight: 600; }
+#gw .warn { font-weight: 600; }
+#gw .acts.l { justify-content: flex-start; align-items: center; }
+#gw .step { display: inline-flex; align-items: center; gap: 6px; }
+#gw .step .num { min-width: 52px; text-align: center; font-size: 13px; }
+#gw .set { border-top: 1px solid var(--w5t-line); padding-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+#gw .inrow select { flex: 0 0 110px; }
+#gw .log { display: grid; grid-template-columns: 78px 1fr; gap: 4px 8px; font-size: 12px; }
+/* kleine Kachel: kompakte Liste */
+#gw .mini { display: grid; grid-template-columns: 1fr auto auto auto; gap: 2px 10px; align-items: center; font-size: 12px; }
+#gw .mini b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#gw .dot.water { background: var(--w5t-cold); }
+body.compact #gw.fill { --w5t-top: 40px; }
+</style>
+<div id="gw" class="w5t fill"></div>
+<script>
+var GW = { s: null, busy: false, pending: false, open: {}, log: false, addT: {}, addM: {} };
+var SMALL_H = 300;
+var DAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+var TUNE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>';
+
+function design(css) {
+  if (typeof css !== 'string') return;
+  var st = document.getElementById('w5d');
+  if (!st) { st = document.createElement('style'); st.id = 'w5d'; (document.head || document.body).appendChild(st); }
+  if (st.textContent !== css) st.textContent = css;
+}
+function handleMessage(data) {
+  try { GW.s = typeof data === 'string' ? JSON.parse(data) : data; } catch (e) { return; }
+  design(GW.s.design);
+  if (GW.busy) { GW.pending = true; return; }
+  render();
+}
+function send(ident, value) { if (typeof requestAction === 'function') requestAction(ident, typeof value === 'object' ? JSON.stringify(value) : value); }
+function esc(t) { return String(t === null || t === undefined ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function n1(x) { return x === null || x === undefined ? '–' : (Math.round(x * 10) / 10).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+function n0(x) { return x === null || x === undefined ? '–' : Math.round(x); }
+function two(x) { return ('0' + x).slice(-2); }
+function hm(m) { return two(Math.floor(m / 60)) + ':' + two(m % 60); }
+function age(sec) {
+  if (sec === null || sec === undefined) return '';
+  if (sec < 3600) return Math.max(1, Math.round(sec / 60)) + ' min';
+  if (sec < 172800) return Math.round(sec / 3600) + ' h';
+  return Math.round(sec / 86400) + ' Tagen';
+}
+function when(ts) {
+  if (!ts) return '';
+  var d = new Date(ts * 1000), t0 = new Date(GW.s.now * 1000); t0.setHours(0, 0, 0, 0);
+  var diff = Math.floor((d - t0) / 86400000);
+  return (diff === 0 ? 'heute ' : diff === 1 ? 'morgen ' : DAYS[(d.getDay() + 6) % 7] + ' ') + two(d.getHours()) + ':' + two(d.getMinutes());
+}
+/* Hell/Dunkel: w5tTheme() aus Visu Design; ohne Design-Instanz dieselbe Regel hier */
+function theme() {
+  if (typeof window.w5tTheme === 'function') { window.w5tTheme(); return; }
+  var b = document.body, m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(b).color || '');
+  b.classList.toggle('dark', m ? (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 > 0.5 : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches));
+}
+window.addEventListener('resize', function () { if (GW.s && !GW.busy) render(); });
+
+/* Zustand eines Bereichs: [Text, Badge-Klasse] */
+function status(z) {
+  if (!z.hasValve) return ['ohne Ventil', 'off'];
+  if (z.running) return [z.running.phase === 'pump' ? 'Pumpe läuft an' : 'gießt', 'water'];
+  if (z.activity && z.activity !== 'CLOSED') return [z.activity === 'SCHEDULED_WATERING' ? 'gießt (GARDENA-Plan)' : 'gießt', 'water'];
+  if (z.queued) return ['wartet', 'water'];
+  if (z.vlink === 'OFFLINE' || z.vstate === 'UNAVAILABLE') return ['Ventil offline', ''];
+  if (z.verror && z.verror !== 'NO_MESSAGE') return ['Fehler', ''];
+  return [z.auto ? 'Automatik' : 'Automatik aus', 'off'];
+}
+function remaining(z) {
+  if (z.running && z.running.until) return Math.max(0, Math.round((z.running.until - 60 - GW.s.now) / 60));
+  if (z.remaining) return Math.max(1, Math.round(z.remaining / 60));
+  return null;
+}
+
+function render() {
+  var s = GW.s, el = document.getElementById('gw');
+  if (!s) return;
+  theme();
+  var small = window.innerHeight < SMALL_H;
+  document.body.classList.toggle('compact', small);
+  if (!s.zones || !s.zones.length) { el.innerHTML = '<div class="hint">Keine Bereiche eingetragen.</div>'; return; }
+  if (small) { renderSmall(s, el); return; }
+  el.onclick = null;
+  var h = weather(s) + '<div class="zones">';
+  s.zones.forEach(function (z) { h += zone(z); });
+  h += '</div>' + pump(s) + logCard(s);
+  el.innerHTML = h;
+  bind();
+}
+
+function renderSmall(s, el) {
+  var r = s.rain || {}, h = '<div class="mini">';
+  s.zones.forEach(function (z) {
+    var st = status(z);
+    h += '<b>' + esc(z.name) + '</b><span class="num">' + (z.hasClimate ? n1(z.temp) + '°' : '') + '</span><span class="num">' + (z.hasSoil ? n0(z.moist) + ' %' : '') + '</span>'
+      + '<span class="dot sm ' + (st[1] === 'water' ? 'water' : z.auto ? 'ok' : '') + '" title="' + esc(st[0]) + '"></span>';
+  });
+  h += '</div><div class="sub">' + (r.ok ? 'Regen 24 h ' + n1(r.h24) + ' mm' : 'keine Regenprognose') + (r.raining ? ' · regnet' : '') + '</div>';
+  el.innerHTML = h;
+  el.onclick = s.detailId > 0 && typeof openObject === 'function' ? function () { try { openObject(s.detailId); } catch (e) { /* nichts */ } } : null;
+}
+
+function weather(s) {
+  var r = s.rain || {}, h = '<div class="card"><div class="row"><span class="lbl">Regen · DWD Calw</span><span class="sub">' + (r.issued ? 'Stand ' + esc(r.issued) : '') + '</span></div>';
+  if (!r.ok) return h + '<span class="hint">' + (r.stale ? 'Prognose veraltet (älter als 12 h) – Regen wird nicht berücksichtigt.' : 'Keine Regenprognose verfügbar.') + '</span></div>';
+  h += '<div class="wx"><div><span class="sub">nächste 24 h</span><span class="big num">' + n1(r.h24) + '<span class="sub"> mm</span></span></div>'
+    + '<div><span class="sub">48 h</span><b class="num">' + n1(r.h48) + ' mm</b></div><div><span class="sub">72 h</span><b class="num">' + n1(r.h72) + ' mm</b></div>'
+    + (s.outTemp !== null ? '<div><span class="sub">außen</span><b class="num">' + n1(s.outTemp) + ' °C</b></div>' : '')
+    + (r.raining === null ? '' : '<div><span class="sub">Regensensor</span><b>' + (r.raining ? 'regnet' : 'trocken') + (r.rained ? ' · ' + r.rained + ' min/24 h' : '') + '</b></div>')
+    + '</div>';
+  var mx = 2;
+  (r.hours || []).forEach(function (x) { mx = Math.max(mx, x[1]); });
+  h += '<div class="rain more" title="Niederschlag je Stunde, nächste 24 h (Skala bis ' + n1(mx) + ' mm)">';
+  (r.hours || []).forEach(function (x) {
+    var d = new Date(x[0] * 1000);
+    h += '<i class="' + (x[1] > 0 ? '' : 'z') + '" style="height:' + (x[1] > 0 ? Math.max(6, x[1] / mx * 100) : 4) + '%" title="' + two(d.getHours()) + ' Uhr: ' + n1(x[1]) + ' mm"></i>';
+  });
+  h += '</div>';
+  if (r.hours && r.hours.length) {
+    h += '<div class="ticks meta more"><span>' + new Date(r.hours[0][0] * 1000).getHours() + ' Uhr</span><span>' + new Date(r.hours[r.hours.length - 1][0] * 1000).getHours() + ' Uhr</span></div>';
+  }
+  if (r.days && r.days.length) {
+    h += '<div class="days more">';
+    r.days.slice(0, 5).forEach(function (d, i) {
+      var dt = new Date(d.ts * 1000);
+      h += '<div class="day"><span class="sub">' + (i === 0 ? 'heute' : DAYS[(dt.getDay() + 6) % 7]) + '</span><b class="num">' + n1(d.prec) + ' mm</b><span class="meta num">' + n0(d.tmin) + '…' + n0(d.tmax) + '°</span></div>';
+    });
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+function zone(z) {
+  var st = status(z), rem = remaining(z), busy = st[1] === 'water', alarm = !busy && (st[0] === 'Ventil offline' || st[0] === 'Fehler');
+  var h = '<div class="card' + (alarm ? ' warn' : '') + '">';
+  h += '<div class="zt"><b>' + esc(z.name) + '</b><span class="badge ' + (alarm ? 'warn' : st[1]) + '">' + esc(st[0]) + (busy && rem !== null ? ' · ' + rem + ' min' : '') + '</span>'
+    + (z.hasValve ? '<button class="ib plain sm" data-open="' + z.i + '" aria-label="Einstellungen ' + esc(z.name) + '" title="Einstellungen">' + TUNE + '</button>' : '') + '</div>';
+  var m = '';
+  if (z.hasClimate) {
+    var cs = z.climateAge !== null && z.climateAge > 6 * 3600;
+    m += '<div class="met' + (cs ? ' dim' : '') + '"><span class="lbl">Luft</span><span class="v num">' + n1(z.temp) + '<small> °C</small></span><span class="sub num">' + n0(z.hum) + ' % rF'
+      + (z.cbat !== null && z.cbat <= 20 ? ' · Batt. ' + z.cbat + ' %' : '') + '</span>' + (cs ? '<span class="meta warn">seit ' + age(z.climateAge) + ' keine Daten</span>' : '') + '</div>';
+  }
+  if (z.hasSoil) {
+    var ss = z.soilAge !== null && z.soilAge > 26 * 3600;
+    m += '<div class="met' + (ss ? ' dim' : '') + '"><span class="lbl">Boden</span><span class="v num">' + n0(z.moist) + '<small> %</small></span><span class="sub num">' + n1(z.stemp) + ' °C'
+      + (z.sbat !== null && z.sbat <= 20 ? ' · Batt. ' + z.sbat + ' %' : '') + '</span>'
+      + '<div class="mb" title="Bodenfeuchte' + (z.moistStop ? ', Strich = Grenze ' + z.moistStop + ' %' : '') + '"><i style="width:' + Math.max(0, Math.min(100, z.moist || 0)) + '%"></i>' + (z.moistStop ? '<u style="left:' + z.moistStop + '%"></u>' : '') + '</div>'
+      + (ss ? '<span class="meta warn">seit ' + age(z.soilAge) + ' keine Daten</span>' : '') + '</div>';
+  } else {
+    m += '<div class="met"><span class="lbl">Boden</span><span class="sub">' + esc(z.note || 'kein Bodensensor') + '</span></div>';
+  }
+  if (!z.hasClimate && z.outdoor) m += '<div class="met"><span class="lbl">Regen</span><span class="v num">' + n1((GW.s.rain || {}).h24) + '<small> mm</small></span><span class="sub">nächste 24 h</span></div>';
+  h += '<div class="mets">' + m + '</div>';
+  if (z.hasValve) {
+    var p;
+    if (z.auto && z.next) {
+      p = 'Nächster Start <b>' + when(z.next) + '</b>';
+      if (z.decision !== null) p += '<br>Stand jetzt: ' + (z.decision ? '<span class="ok">wird gegossen</span>' : '<span class="warn">wird übersprungen</span>') + (z.why ? ' – ' + esc(z.why) : '');
+    } else p = z.auto ? 'Automatik ohne Startzeit' : 'Automatik aus – nur Hand-Start';
+    h += '<div class="sub">' + p + '</div>';
+    if (!busy && GW.s.pump && GW.s.pump.missing) h += '<div class="hint warn">Pumpe Zisterne ist aus – ohne Pumpe kommt kein Wasser.</div>';
+    h += '<div class="acts l">' + (busy ? '<button class="btn bad solid" data-stop="' + z.i + '">Stopp</button>'
+      : '<span class="sub">Gießen</span>' + [5, 10, 15, 30].map(function (x) { return '<button class="btn sm" data-start="' + z.i + '" data-min="' + x + '">' + x + ' min</button>'; }).join('')) + '</div>';
+    if (GW.open[z.i]) h += settings(z);
+  }
+  return h + '</div>';
+}
+
+function settings(z) {
+  var h = '<div class="set">';
+  h += '<div class="row"><div class="t"><b>Automatik</b><span class="sub">Zeitplan mit Feuchte-, Frost- und Regenprüfung</span></div><button class="tg' + (z.auto ? ' on' : '') + '" data-auto="' + z.i + '" role="switch" aria-checked="' + !!z.auto + '" aria-label="Automatik"></button></div>';
+  h += '<span class="lbl">Startzeiten</span><div class="chips">';
+  z.times.forEach(function (t, k) { h += '<button class="chip" data-deltime="' + z.i + '" data-k="' + k + '" title="entfernen">' + hm(t.m) + ' · ' + t.d + ' min ×</button>'; });
+  if (!z.times.length) h += '<span class="sub">keine</span>';
+  h += '</div><div class="inrow"><input type="time" id="at' + z.i + '" value="' + esc(GW.addT[z.i] || '06:00') + '" aria-label="Startzeit">'
+    + '<select id="am' + z.i + '" aria-label="Dauer">' + [3, 5, 10, 15, 20, 30, 45, 60].map(function (x) { return '<option value="' + x + '"' + ((GW.addM[z.i] || 10) == x ? ' selected' : '') + '>' + x + ' min</option>'; }).join('') + '</select>'
+    + '<button class="btn acc" data-addtime="' + z.i + '">Hinzufügen</button></div>';
+  h += '<span class="lbl">Wochentage</span><div class="chips">';
+  DAYS.forEach(function (d, k) { h += '<button class="chip' + (z.days.indexOf(k + 1) >= 0 ? ' on' : '') + '" data-day="' + z.i + '" data-k="' + k + '">' + d + '</button>'; });
+  h += '</div>';
+  if (z.hasSoil) {
+    h += '<div class="row"><div class="t"><b>Nicht gießen ab Bodenfeuchte</b><span class="sub">0 = Feuchte nicht prüfen</span></div><span class="step"><button class="ib plain sm" data-moist="' + z.i + '" data-d="-5" aria-label="weniger">−</button><span class="num">' + (z.moistStop ? z.moistStop + ' %' : 'aus') + '</span><button class="ib plain sm" data-moist="' + z.i + '" data-d="5" aria-label="mehr">+</button></span></div>';
+  }
+  if (z.outdoor) {
+    h += '<div class="row"><div class="t"><b>Nicht gießen ab Regen</b><span class="sub">Prognose 24 h · 0 = Regen nicht prüfen</span></div><span class="step"><button class="ib plain sm" data-rain="' + z.i + '" data-d="-1" aria-label="weniger">−</button><span class="num">' + (z.rainStop ? n1(z.rainStop) + ' mm' : 'aus') + '</span><button class="ib plain sm" data-rain="' + z.i + '" data-d="1" aria-label="mehr">+</button></span></div>';
+  }
+  return h + '</div>';
+}
+
+function pump(s) {
+  if (!s.pump) return '';
+  var need = s.pump.missing && s.zones.some(function (z) { return z.auto; });
+  return '<div class="card' + (need ? ' warn' : '') + '"><div class="row"><div class="t"><b>Pumpe Zisterne</b><span class="sub">' + (s.pump.on ? 'läuft' : 'aus')
+    + (s.pump.auto ? ' · schaltet bei Bewässerung automatisch' : ' · liefert das Wasser, wird von Hand geschaltet') + (need ? ' · Automatik gießt nur bei laufender Pumpe' : '') + (s.queue ? ' · ' + s.queue + ' in Warteschlange' : '') + '</span></div>'
+    + '<button class="tg' + (s.pump.on ? ' on' : '') + '" id="pump" role="switch" aria-checked="' + !!s.pump.on + '" aria-label="Pumpe Zisterne"></button></div></div>';
+}
+
+function logCard(s) {
+  var h = '<div class="card more"><div class="row"><span class="lbl">Protokoll</span><button class="lnk" id="logt">' + (GW.log ? 'ausblenden ▴' : 'anzeigen ▾') + '</button></div>';
+  if (GW.log) {
+    h += '<div class="log">';
+    (s.log || []).forEach(function (e) {
+      var d = new Date(e[0] * 1000);
+      h += '<span class="meta num">' + two(d.getDate()) + '.' + two(d.getMonth() + 1) + '. ' + two(d.getHours()) + ':' + two(d.getMinutes()) + '</span><span>' + esc(e[1]) + ': ' + esc(e[2]) + '</span>';
+    });
+    if (!(s.log || []).length) h += '<span></span><span class="hint">noch keine Einträge</span>';
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+function zoneOf(i) { var r = null; GW.s.zones.forEach(function (z) { if (z.i === i) r = z; }); return r; }
+function timesText(list) { return list.map(function (t) { return hm(t.m) + '=' + t.d; }).join(', '); }
+function on(attr, fn) { document.querySelectorAll('[' + attr + ']').forEach(function (b) { b.onclick = function () { fn(b, +b.getAttribute(attr)); }; }); }
+
+function bind() {
+  on('data-open', function (b, i) { GW.open[i] = !GW.open[i]; render(); });
+  on('data-start', function (b, i) { send('Start', { z: i, min: +b.getAttribute('data-min') }); });
+  on('data-stop', function (b, i) { send('Stop', { z: i }); });
+  on('data-auto', function (b, i) { send('Auto', { z: i, on: !zoneOf(i).auto }); });
+  on('data-moist', function (b, i) { var z = zoneOf(i); send('Moist', { z: i, v: Math.max(0, Math.min(95, z.moistStop + +b.getAttribute('data-d'))) }); });
+  on('data-rain', function (b, i) { var z = zoneOf(i); send('Rain', { z: i, v: Math.max(0, Math.min(30, z.rainStop + +b.getAttribute('data-d'))) }); });
+  on('data-day', function (b, i) {
+    var z = zoneOf(i), k = +b.getAttribute('data-k') + 1, d = z.days.slice(), p = d.indexOf(k);
+    if (p >= 0) d.splice(p, 1); else d.push(k);
+    d.sort();
+    send('Days', { z: i, v: d.map(function (x) { return DAYS[x - 1]; }).join(',') });
+  });
+  on('data-deltime', function (b, i) { var t = zoneOf(i).times.slice(); t.splice(+b.getAttribute('data-k'), 1); send('Times', { z: i, v: timesText(t) }); });
+  on('data-addtime', function (b, i) {
+    var z = zoneOf(i), ti = document.getElementById('at' + i).value, mi = +document.getElementById('am' + i).value;
+    if (!/^\d{2}:\d{2}$/.test(ti)) return;
+    GW.addT[i] = ti; GW.addM[i] = mi;
+    send('Times', { z: i, v: timesText(z.times) + (z.times.length ? ', ' : '') + ti + '=' + mi });
+  });
+  document.querySelectorAll('.inrow input, .inrow select').forEach(function (x) {
+    x.onfocus = function () { GW.busy = true; };
+    x.onblur = function () {
+      var i = +x.id.slice(2);
+      if (x.id.charAt(1) === 't') GW.addT[i] = x.value; else GW.addM[i] = +x.value;
+      GW.busy = false; if (GW.pending) { GW.pending = false; setTimeout(render, 200); }
+    };
+  });
+  var p = document.getElementById('pump');
+  if (p) p.onclick = function () { send('Pump', !GW.s.pump.on); };
+  var l = document.getElementById('logt');
+  if (l) l.onclick = function () { GW.log = !GW.log; render(); };
+}
+</script>
